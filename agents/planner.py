@@ -133,7 +133,11 @@ def generate_outline(params: BookParams, research_context: str, api_key: str) ->
             messages=messages,
         )
         raw = response.content[0].text
-        outline = parse_outline_json(raw)
+        try:
+            outline = parse_outline_json(raw)
+        except ValueError as e:
+            print(f"\n⚠  Could not parse outline: {e}\nRetrying...\n")
+            continue
 
         print(_format_outline_for_display(outline))
 

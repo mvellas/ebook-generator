@@ -162,7 +162,9 @@ class DocxBuilder:
                     run.italic = True
                     _set_run_font(run, "Garamond", 10)
             else:
-                paragraphs = [p.strip() for p in part.split("\n\n") if p.strip()]
+                # Split on double OR single newlines, strip markdown heading markers
+                raw_paras = re.split(r"\n\n|\n", part)
+                paragraphs = [re.sub(r"^#{1,6}\s+", "", p).strip() for p in raw_paras if p.strip()]
                 for para_text in paragraphs:
                     if is_first_para:
                         try:
