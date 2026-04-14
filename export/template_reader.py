@@ -32,12 +32,6 @@ _DEFAULTS = TemplateStyles(
     margin_right_inches=0.60,
 )
 
-_KNOWN_STYLE_NAMES = {
-    "chapter_title": "CSP - Chapter Title",
-    "body_text": "CSP - Chapter Body Text",
-    "first_paragraph": "CSP - Chapter Body Text - First Paragraph",
-    "front_matter_body": "CSP - Front Matter Body Text",
-}
 
 
 def load_template_styles(template_path: str) -> TemplateStyles:
@@ -57,14 +51,15 @@ def load_template_styles(template_path: str) -> TemplateStyles:
         bottom = section.bottom_margin.inches
         left = section.left_margin.inches
         right = section.right_margin.inches
-    except Exception:
+    except Exception as e:
+        print(f"  ⚠  Could not read template dimensions from {path}: {e}. Using defaults.")
         return _DEFAULTS
 
     return TemplateStyles(
-        chapter_title=_KNOWN_STYLE_NAMES["chapter_title"],
-        body_text=_KNOWN_STYLE_NAMES["body_text"],
-        first_paragraph=_KNOWN_STYLE_NAMES["first_paragraph"],
-        front_matter_body=_KNOWN_STYLE_NAMES["front_matter_body"],
+        chapter_title=_DEFAULTS.chapter_title,
+        body_text=_DEFAULTS.body_text,
+        first_paragraph=_DEFAULTS.first_paragraph,
+        front_matter_body=_DEFAULTS.front_matter_body,
         page_width_inches=width,
         page_height_inches=height,
         margin_top_inches=top,

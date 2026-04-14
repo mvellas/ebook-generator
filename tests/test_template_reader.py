@@ -1,5 +1,3 @@
-import pytest
-from unittest.mock import MagicMock, patch
 from export.template_reader import load_template_styles, TemplateStyles
 
 
@@ -32,3 +30,9 @@ def test_load_template_styles_returns_template_styles(tmp_path):
     styles = load_template_styles(str(doc_path))
     assert isinstance(styles, TemplateStyles)
     assert styles.page_width_inches > 0
+
+
+def test_load_template_styles_falls_back_when_file_missing():
+    styles = load_template_styles("/nonexistent/path/template.docx")
+    assert isinstance(styles, TemplateStyles)
+    assert styles.page_width_inches == 5.0  # default value
