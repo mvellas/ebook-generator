@@ -63,7 +63,6 @@ def generate_images_for_chapter(
                 size=IMAGE_SIZE,
                 quality=IMAGE_QUALITY,
                 n=1,
-                response_format="b64_json",
             )
 
             image_b64 = response.data[0].b64_json
