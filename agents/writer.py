@@ -3,6 +3,7 @@ import anthropic
 from agents.models import Chapter, Outline
 
 WRITER_MODEL = "claude-haiku-4-5-20251001"
+WORDS_PER_PAGE = 250
 
 SYSTEM_PROMPT_TEMPLATE = """You are a professional book author writing in {language}.
 
@@ -24,7 +25,7 @@ def build_chapter_prompt(chapter: Chapter, outline: Outline, research_context: s
         f"  {i+1}. {s.title} (~{s.estimated_pages:.1f} pages)"
         for i, s in enumerate(chapter.sections)
     )
-    word_count = int(chapter.estimated_pages * 250)  # ~250 words per page
+    word_count = int(chapter.estimated_pages * WORDS_PER_PAGE)
 
     return (
         f"Write Chapter {chapter.number}: \"{chapter.title}\"\n\n"
@@ -50,7 +51,7 @@ def write_chapter(
     system = SYSTEM_PROMPT_TEMPLATE.format(
         language=outline.language,
         estimated_pages=chapter.estimated_pages,
-        word_count=int(chapter.estimated_pages * 250),
+        word_count=int(chapter.estimated_pages * WORDS_PER_PAGE),
     )
     user_prompt = build_chapter_prompt(chapter, outline, research_context)
 
@@ -58,15 +59,18 @@ def write_chapter(
     print("-" * 50)
 
     full_text = []
-    with client.messages.stream(
-        model=WRITER_MODEL,
-        max_tokens=8192,
-        system=system,
-        messages=[{"role": "user", "content": user_prompt}],
-    ) as stream:
-        for text in stream.text_stream:
-            print(text, end="", flush=True)
-            full_text.append(text)
+    try:
+        with client.messages.stream(
+            model=WRITER_MODEL,
+            max_tokens=8192,
+            system=system,
+            messages=[{"role": "user", "content": user_prompt}],
+        ) as stream:
+            for text in stream.text_stream:
+                print(text, end="", flush=True)
+                full_text.append(text)
+    except anthropic.APIError as e:
+        raise RuntimeError(f"Failed to write chapter {chapter.number}: {e}") from e
 
     print("\n" + "-" * 50)
     return "".join(full_text)

@@ -41,3 +41,21 @@ def test_build_chapter_prompt_contains_image_instruction():
     chapter = outline.chapters[0]
     prompt = build_chapter_prompt(chapter, outline, "research")
     assert "[IMAGE:" in prompt
+
+
+def test_write_chapter_returns_string():
+    outline = _make_outline()
+    chapter = outline.chapters[0]
+
+    mock_stream = MagicMock()
+    mock_stream.__enter__ = MagicMock(return_value=mock_stream)
+    mock_stream.__exit__ = MagicMock(return_value=False)
+    mock_stream.text_stream = iter(["Hello ", "world"])
+
+    mock_client = MagicMock()
+    mock_client.messages.stream.return_value = mock_stream
+
+    with patch("agents.writer.anthropic.Anthropic", return_value=mock_client):
+        result = write_chapter(chapter, outline, "research context", api_key="test-key")
+
+    assert result == "Hello world"
