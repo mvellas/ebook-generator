@@ -7,6 +7,7 @@ import openai
 
 IMAGE_MODEL = "gpt-image-1"
 IMAGE_SIZE = "1024x1024"
+IMAGE_QUALITY = "standard"
 
 
 @dataclass
@@ -55,18 +56,21 @@ def generate_images_for_chapter(
         print(f"\n🎨 Generating image: {marker.description[:60]}...")
         prompt = _build_image_prompt(marker.description)
 
-        response = client.images.generate(
-            model=IMAGE_MODEL,
-            prompt=prompt,
-            size=IMAGE_SIZE,
-            quality="standard",
-            n=1,
-            response_format="b64_json",
-        )
+        try:
+            response = client.images.generate(
+                model=IMAGE_MODEL,
+                prompt=prompt,
+                size=IMAGE_SIZE,
+                quality=IMAGE_QUALITY,
+                n=1,
+                response_format="b64_json",
+            )
 
-        image_b64 = response.data[0].b64_json
-        image_bytes = base64.b64decode(image_b64)
-        results.append(GeneratedImage(marker=marker, image_bytes=image_bytes))
-        print(f"  ✅ Image generated ({len(image_bytes) // 1024} KB)")
+            image_b64 = response.data[0].b64_json
+            image_bytes = base64.b64decode(image_b64)
+            results.append(GeneratedImage(marker=marker, image_bytes=image_bytes))
+            print(f"  ✅ Image generated ({len(image_bytes) // 1024} KB)")
+        except openai.OpenAIError as e:
+            print(f"  ⚠  Skipping image for '{marker.description[:40]}...': {e}")
 
     return results
