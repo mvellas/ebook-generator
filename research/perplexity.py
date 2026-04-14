@@ -8,6 +8,11 @@ PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
 
 def research_topic(theme: str, api_key: str) -> str:
     """Query Perplexity sonar-pro for current context on the given theme."""
+    if not theme or not theme.strip():
+        raise ValueError("theme must be a non-empty string")
+    if not api_key or not api_key.strip():
+        raise ValueError("api_key must be a non-empty string")
+
     year = datetime.now().year
     query = (
         f"{theme} — current context, key trends, recent data, and expert perspectives as of {year}. "
@@ -38,4 +43,8 @@ def research_topic(theme: str, api_key: str) -> str:
     response = requests.post(PERPLEXITY_API_URL, json=payload, headers=headers, timeout=60)
     response.raise_for_status()
     data = response.json()
+
+    if "choices" not in data or not data["choices"]:
+        raise ValueError("API response missing 'choices' key or empty choices list")
+
     return data["choices"][0]["message"]["content"]
