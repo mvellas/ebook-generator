@@ -1,4 +1,5 @@
 import json
+import pytest
 from unittest.mock import MagicMock, patch
 from agents.models import BookParams, Outline, Chapter, Section
 from agents.planner import parse_outline_json, generate_outline
@@ -42,6 +43,5 @@ def test_parse_outline_json_handles_json_in_markdown_block():
 
 
 def test_parse_outline_json_raises_on_invalid():
-    import pytest
     with pytest.raises(ValueError, match="Could not parse outline"):
         parse_outline_json("this is not json")

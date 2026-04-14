@@ -53,28 +53,31 @@ def parse_outline_json(text: str) -> Outline:
     except json.JSONDecodeError as e:
         raise ValueError(f"Could not parse outline — invalid JSON: {e}")
 
-    chapters = [
-        Chapter(
-            number=ch["number"],
-            title=ch["title"],
-            sections=[
-                Section(title=s["title"], estimated_pages=s["estimated_pages"])
-                for s in ch.get("sections", [])
-            ],
-            estimated_pages=ch["estimated_pages"],
-        )
-        for ch in data["chapters"]
-    ]
+    try:
+        chapters = [
+            Chapter(
+                number=ch["number"],
+                title=ch["title"],
+                sections=[
+                    Section(title=s["title"], estimated_pages=s["estimated_pages"])
+                    for s in ch.get("sections", [])
+                ],
+                estimated_pages=ch["estimated_pages"],
+            )
+            for ch in data["chapters"]
+        ]
 
-    return Outline(
-        book_title=data["book_title"],
-        author=data["author"],
-        language=data["language"],
-        front_matter=data.get("front_matter", ["Dedication", "Acknowledgments"]),
-        chapters=chapters,
-        back_matter=data.get("back_matter", ["About the Author"]),
-        total_estimated_pages=data["total_estimated_pages"],
-    )
+        return Outline(
+            book_title=data["book_title"],
+            author=data["author"],
+            language=data["language"],
+            front_matter=data.get("front_matter", ["Dedication", "Acknowledgments"]),
+            chapters=chapters,
+            back_matter=data.get("back_matter", ["About the Author"]),
+            total_estimated_pages=data["total_estimated_pages"],
+        )
+    except (KeyError, TypeError) as e:
+        raise ValueError(f"Could not parse outline — missing field: {e}")
 
 
 def _format_outline_for_display(outline: Outline) -> str:
@@ -148,14 +151,17 @@ def generate_outline(params: BookParams, research_context: str, api_key: str) ->
             print("\n🔄 Rewriting outline from scratch...\n")
         elif choice == "E":
             edit_instruction = input("Describe your changes: ").strip()
-            messages.append({"role": "assistant", "content": raw})
-            messages.append({
-                "role": "user",
-                "content": (
-                    f"Please revise the outline with these changes: {edit_instruction}\n"
-                    f"Return the complete revised JSON outline."
-                ),
-            })
+            messages = [
+                *messages,
+                {"role": "assistant", "content": raw},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Please revise the outline with these changes: {edit_instruction}\n"
+                        f"Return the complete revised JSON outline."
+                    ),
+                },
+            ]
             print("\n✏️  Refining outline...\n")
         else:
             print("Please enter A, E, or R.")
