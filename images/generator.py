@@ -7,7 +7,7 @@ import openai
 
 IMAGE_MODEL = "gpt-image-1"
 IMAGE_SIZE = "1024x1024"
-IMAGE_QUALITY = "standard"
+IMAGE_QUALITY = "medium"
 
 
 @dataclass
