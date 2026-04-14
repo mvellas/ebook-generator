@@ -2,14 +2,18 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from PIL import Image as PILImage
 from agents.models import Outline
 from export.template_reader import TemplateStyles
 from images.generator import GeneratedImage
+
+TARGET_WIDTH_PX = int(4.0 * 96)  # 4 inches at 96 DPI
 
 
 def _add_page_break(doc: Document) -> None:
@@ -84,7 +88,6 @@ class DocxBuilder:
         _set_run_font(run, "Garamond", 18)
 
     def _add_copyright(self, doc: Document, outline: Outline) -> None:
-        from datetime import datetime
         year = datetime.now().year
         lines = [
             f"Copyright © {year} {outline.author}",
@@ -174,12 +177,13 @@ class DocxBuilder:
                             doc.add_paragraph(para_text)
 
     def _embed_image(self, doc: Document, img: GeneratedImage) -> None:
-        import io as _io
-        from PIL import Image as PILImage
-
-        buf = _io.BytesIO(img.image_bytes)
+        buf = io.BytesIO(img.image_bytes)
         pil_img = PILImage.open(buf)
-        buf_out = _io.BytesIO()
+        w, h = pil_img.size
+        if w > TARGET_WIDTH_PX:
+            new_h = int(h * TARGET_WIDTH_PX / w)
+            pil_img = pil_img.resize((TARGET_WIDTH_PX, new_h), PILImage.LANCZOS)
+        buf_out = io.BytesIO()
         pil_img.save(buf_out, format="PNG")
         buf_out.seek(0)
 

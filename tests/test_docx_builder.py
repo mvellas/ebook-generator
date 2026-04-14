@@ -67,3 +67,17 @@ def test_build_includes_chapter_title():
     doc = Document(io.BytesIO(result))
     all_text = "\n".join(p.text for p in doc.paragraphs)
     assert "The Beginning" in all_text
+
+
+def test_build_renders_unmatched_image_marker_as_italic():
+    outline = _make_outline()
+    builder = DocxBuilder(styles=_DEFAULTS)
+    result = builder.build(
+        outline=outline,
+        chapter_texts={1: "Intro.\n\n[IMAGE: A diagram]\n\nMore text."},
+        chapter_images={1: []},  # no images provided
+        about_author="Bio.",
+    )
+    doc = Document(io.BytesIO(result))
+    all_text = "\n".join(p.text for p in doc.paragraphs)
+    assert "[IMAGE: A diagram]" in all_text
