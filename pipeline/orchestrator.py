@@ -39,9 +39,14 @@ def run(params: BookParams) -> Path:
     chapter_images: dict[int, list] = {}
     total = len(outline.chapters)
 
+    debug_dir = Path.cwd() / "debug"
+    debug_dir.mkdir(exist_ok=True)
+
     for i, chapter in enumerate(outline.chapters, 1):
         print(f"\n[3/5] ✍️  Writing chapter {i}/{total}...")
         text = write_chapter(chapter, outline, research, api_key=anthropic_key)
+        # Save raw writer output for debugging
+        (debug_dir / f"chapter_{chapter.number:02d}_raw.txt").write_text(text, encoding="utf-8")
         chapter_texts[chapter.number] = text
 
         print(f"\n[4/5] 🎨 Generating images for chapter {i}/{total}...")

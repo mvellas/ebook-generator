@@ -134,31 +134,35 @@ class DocxBuilder:
         text: str,
         images: list[GeneratedImage],
     ) -> None:
-        try:
-            doc.add_paragraph(
-                f"{chapter.number}  {chapter.title.upper()}",
-                style=self.styles.chapter_title,
-            )
-        except KeyError:
-            p = doc.add_paragraph(f"{chapter.number}  {chapter.title.upper()}")
-            p.runs[0].font.size = Pt(14)
+        # Always use explicit formatting — never rely on template styles that may not exist.
+        heading_para = doc.add_paragraph()
+        heading_run = heading_para.add_run(f"{chapter.number}  {chapter.title.upper()}")
+        _set_run_font(heading_run, "Garamond", 14, bold=True)
 
         doc.add_paragraph()
 
-        # Strip leading title line that Haiku often outputs (e.g. "# Chapter Title" or
-        # "Chapter 1: Title") to avoid duplicating the heading we already added above.
-        cleaned_text = re.sub(
-            r"^\s*(?:#{1,6}\s+)?(?:chapter\s+\d+[:\s]+)?" + re.escape(chapter.title) + r"\s*\n?",
-            "",
-            text,
-            count=1,
-            flags=re.IGNORECASE,
-        ).lstrip()
+        # Strip ALL leading title variants that Haiku outputs before the body text.
+        # Handles: "# Title", "**Title**", "Chapter N: Title", plain "Title", uppercase.
+        title_pattern = re.compile(
+            r"^\s*(?:\*{1,2})?"                      # optional bold markdown
+            r"(?:#{1,6}\s*)?"                         # optional heading markers
+            r"(?:chapter\s+\d+\s*[:\-–]\s*)?"        # optional "Chapter N:" prefix
+            r"(?:\*{1,2})?"                           # optional closing bold
+            r"(?:\d+\s+)?"                            # optional leading number "1  "
+            + re.escape(chapter.title)
+            + r"(?:\*{1,2})?"                         # optional closing bold
+            + r"\s*\n?",
+            re.IGNORECASE,
+        )
+        cleaned_text = title_pattern.sub("", text, count=1).lstrip()
 
         image_map: dict[str, GeneratedImage] = {img.marker.full_match: img for img in images}
 
         image_pattern = re.compile(r"(\[IMAGE:[^\]]+\])")
         parts = image_pattern.split(cleaned_text)
+
+        # Track seen paragraphs to suppress consecutive duplicates (LLM sometimes repeats).
+        seen: set[str] = set()
 
         is_first_para = True
         for part in parts:
@@ -172,13 +176,19 @@ class DocxBuilder:
                     run.italic = True
                     _set_run_font(run, "Garamond", 10)
             else:
-                # Split on double newlines for paragraph breaks; join orphaned single-newline
-                # lines (soft wraps) into their paragraph to avoid false duplication.
                 raw_paras = re.split(r"\n{2,}", part)
                 paragraphs = [
-                    re.sub(r"^#{1,6}\s+", "", p).replace("\n", " ").strip()
+                    re.sub(r"^[#*\s]+", "", p).replace("\n", " ").strip()
                     for p in raw_paras if p.strip()
                 ]
+                # Deduplicate: skip paragraphs identical to one already rendered.
+                unique_paragraphs = []
+                for para_text in paragraphs:
+                    key = para_text.lower()
+                    if key not in seen:
+                        seen.add(key)
+                        unique_paragraphs.append(para_text)
+                paragraphs = unique_paragraphs
                 for para_text in paragraphs:
                     if is_first_para:
                         try:
