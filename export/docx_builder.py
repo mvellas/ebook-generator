@@ -145,10 +145,20 @@ class DocxBuilder:
 
         doc.add_paragraph()
 
+        # Strip leading title line that Haiku often outputs (e.g. "# Chapter Title" or
+        # "Chapter 1: Title") to avoid duplicating the heading we already added above.
+        cleaned_text = re.sub(
+            r"^\s*(?:#{1,6}\s+)?(?:chapter\s+\d+[:\s]+)?" + re.escape(chapter.title) + r"\s*\n?",
+            "",
+            text,
+            count=1,
+            flags=re.IGNORECASE,
+        ).lstrip()
+
         image_map: dict[str, GeneratedImage] = {img.marker.full_match: img for img in images}
 
         image_pattern = re.compile(r"(\[IMAGE:[^\]]+\])")
-        parts = image_pattern.split(text)
+        parts = image_pattern.split(cleaned_text)
 
         is_first_para = True
         for part in parts:
@@ -162,9 +172,13 @@ class DocxBuilder:
                     run.italic = True
                     _set_run_font(run, "Garamond", 10)
             else:
-                # Split on double OR single newlines, strip markdown heading markers
-                raw_paras = re.split(r"\n\n|\n", part)
-                paragraphs = [re.sub(r"^#{1,6}\s+", "", p).strip() for p in raw_paras if p.strip()]
+                # Split on double newlines for paragraph breaks; join orphaned single-newline
+                # lines (soft wraps) into their paragraph to avoid false duplication.
+                raw_paras = re.split(r"\n{2,}", part)
+                paragraphs = [
+                    re.sub(r"^#{1,6}\s+", "", p).replace("\n", " ").strip()
+                    for p in raw_paras if p.strip()
+                ]
                 for para_text in paragraphs:
                     if is_first_para:
                         try:
