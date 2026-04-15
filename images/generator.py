@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import base64
 from dataclasses import dataclass
+import requests
 import openai
 
 IMAGE_MODEL = "gpt-image-1"
@@ -65,8 +66,13 @@ def generate_images_for_chapter(
                 n=1,
             )
 
-            image_b64 = response.data[0].b64_json
-            image_bytes = base64.b64decode(image_b64)
+            data = response.data[0]
+            if data.b64_json:
+                image_bytes = base64.b64decode(data.b64_json)
+            elif data.url:
+                image_bytes = requests.get(data.url, timeout=30).content
+            else:
+                raise ValueError("API returned no image data (no b64_json or url)")
             results.append(GeneratedImage(marker=marker, image_bytes=image_bytes))
             print(f"  ✅ Image generated ({len(image_bytes) // 1024} KB)")
         except openai.OpenAIError as e:
