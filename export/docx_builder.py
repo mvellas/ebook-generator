@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from docx import Document
-from docx.shared import Pt, Inches, RGBColor
+from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
@@ -15,6 +15,9 @@ from images.generator import GeneratedImage
 
 TARGET_WIDTH_PX = int(4.0 * 96)  # 4 inches at 96 DPI
 
+# Tokeniser for inline markdown: bold (**text**), italic (*text*), plain text
+_INLINE_TOKEN = re.compile(r"\*\*(.+?)\*\*|\*(.+?)\*|([^*]+)", re.DOTALL)
+
 
 def _add_page_break(doc: Document) -> None:
     para = doc.add_paragraph()
@@ -24,10 +27,40 @@ def _add_page_break(doc: Document) -> None:
     run._r.append(br)
 
 
-def _set_run_font(run, name: str, size_pt: float, bold: bool = False) -> None:
-    run.font.name = name
-    run.font.size = Pt(size_pt)
+def _plain_para(doc: Document, text: str, font_size: float = 11,
+                bold: bool = False, italic: bool = False,
+                align: WD_ALIGN_PARAGRAPH = WD_ALIGN_PARAGRAPH.LEFT) -> None:
+    """Add a paragraph with explicit Garamond formatting — no style names."""
+    para = doc.add_paragraph()
+    para.alignment = align
+    run = para.add_run(text)
+    run.font.name = "Garamond"
+    run.font.size = Pt(font_size)
     run.font.bold = bold
+    run.font.italic = italic
+
+
+def _markdown_para(doc: Document, text: str, font_size: float = 11,
+                   align: WD_ALIGN_PARAGRAPH = WD_ALIGN_PARAGRAPH.LEFT) -> None:
+    """Add a paragraph, rendering **bold** and *italic* inline markdown as runs."""
+    para = doc.add_paragraph()
+    para.alignment = align
+    for m in _INLINE_TOKEN.finditer(text):
+        bold_text, italic_text, plain_text = m.group(1), m.group(2), m.group(3)
+        if bold_text:
+            run = para.add_run(bold_text)
+            run.font.name = "Garamond"
+            run.font.size = Pt(font_size)
+            run.font.bold = True
+        elif italic_text:
+            run = para.add_run(italic_text)
+            run.font.name = "Garamond"
+            run.font.size = Pt(font_size)
+            run.font.italic = True
+        elif plain_text:
+            run = para.add_run(plain_text)
+            run.font.name = "Garamond"
+            run.font.size = Pt(font_size)
 
 
 @dataclass
@@ -75,17 +108,11 @@ class DocxBuilder:
         return buf.getvalue()
 
     def _add_title_page(self, doc: Document, outline: Outline) -> None:
-        title_para = doc.add_paragraph()
-        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = title_para.add_run(outline.book_title)
-        _set_run_font(run, "Garamond", 36, bold=False)
-
+        _plain_para(doc, outline.book_title, font_size=36,
+                    align=WD_ALIGN_PARAGRAPH.CENTER)
         doc.add_paragraph()
-
-        author_para = doc.add_paragraph()
-        author_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = author_para.add_run(outline.author)
-        _set_run_font(run, "Garamond", 18)
+        _plain_para(doc, outline.author, font_size=18,
+                    align=WD_ALIGN_PARAGRAPH.CENTER)
 
     def _add_copyright(self, doc: Document, outline: Outline) -> None:
         year = datetime.now().year
@@ -97,35 +124,19 @@ class DocxBuilder:
             "in any form or by any means without the prior written permission of the author.",
         ]
         for line in lines:
-            para = doc.add_paragraph()
-            run = para.add_run(line)
-            _set_run_font(run, "Garamond", 10)
+            _plain_para(doc, line, font_size=10)
 
     def _add_front_matter_section(self, doc: Document, heading: str, body: str) -> None:
-        try:
-            doc.add_paragraph(heading, style=self.styles.chapter_title)
-        except KeyError:
-            p = doc.add_paragraph(heading)
-            p.runs[0].font.size = Pt(14)
-
+        _plain_para(doc, heading, font_size=14, bold=True)
         doc.add_paragraph()
         if body:
-            try:
-                doc.add_paragraph(body, style=self.styles.front_matter_body)
-            except KeyError:
-                doc.add_paragraph(body)
+            _plain_para(doc, body, font_size=11)
 
     def _add_contents(self, doc: Document, outline: Outline) -> None:
-        try:
-            doc.add_paragraph("CONTENTS", style=self.styles.chapter_title)
-        except KeyError:
-            doc.add_paragraph("CONTENTS")
-
+        _plain_para(doc, "CONTENTS", font_size=14, bold=True)
         doc.add_paragraph()
         for ch in outline.chapters:
-            p = doc.add_paragraph()
-            run = p.add_run(f"{ch.number}. {ch.title}")
-            _set_run_font(run, "Garamond", 11)
+            _plain_para(doc, f"{ch.number}. {ch.title}", font_size=11)
 
     def _add_chapter(
         self,
@@ -134,73 +145,66 @@ class DocxBuilder:
         text: str,
         images: list[GeneratedImage],
     ) -> None:
-        # Always use explicit formatting — never rely on template styles that may not exist.
-        heading_para = doc.add_paragraph()
-        heading_run = heading_para.add_run(f"{chapter.number}  {chapter.title.upper()}")
-        _set_run_font(heading_run, "Garamond", 14, bold=True)
-
+        _plain_para(doc, f"{chapter.number}  {chapter.title.upper()}",
+                    font_size=14, bold=True)
         doc.add_paragraph()
 
-        # Strip ALL leading title variants that Haiku outputs before the body text.
-        # Handles: "# Title", "**Title**", "Chapter N: Title", plain "Title", uppercase.
+        # Strip leading title that Haiku typically repeats at the top of the chapter.
+        # Matches: "# Title", "**Title**", "Chapter N: Title", plain title (any case).
         title_pattern = re.compile(
-            r"^\s*(?:\*{1,2})?"                      # optional bold markdown
-            r"(?:#{1,6}\s*)?"                         # optional heading markers
-            r"(?:chapter\s+\d+\s*[:\-–]\s*)?"        # optional "Chapter N:" prefix
-            r"(?:\*{1,2})?"                           # optional closing bold
-            r"(?:\d+\s+)?"                            # optional leading number "1  "
+            r"^\s*"
+            r"(?:\*{1,2})?"
+            r"(?:#{1,6}\s*)?"
+            r"(?:chapter\s+\d+\s*[:\-–]\s*)?"
+            r"(?:\*{1,2})?"
+            r"(?:\d+\s+)?"
             + re.escape(chapter.title)
-            + r"(?:\*{1,2})?"                         # optional closing bold
+            + r"(?:\*{1,2})?"
             + r"\s*\n?",
             re.IGNORECASE,
         )
         cleaned_text = title_pattern.sub("", text, count=1).lstrip()
 
-        image_map: dict[str, GeneratedImage] = {img.marker.full_match: img for img in images}
-
+        image_map: dict[str, GeneratedImage] = {
+            img.marker.full_match: img for img in images
+        }
         image_pattern = re.compile(r"(\[IMAGE:[^\]]+\])")
         parts = image_pattern.split(cleaned_text)
 
-        # Track seen paragraphs to suppress consecutive duplicates (LLM sometimes repeats).
         seen: set[str] = set()
-
         is_first_para = True
+
         for part in parts:
             if image_pattern.match(part):
                 img = image_map.get(part)
                 if img:
                     self._embed_image(doc, img)
                 else:
-                    p = doc.add_paragraph()
-                    run = p.add_run(part)
-                    run.italic = True
-                    _set_run_font(run, "Garamond", 10)
+                    _plain_para(doc, part, font_size=10, italic=True)
             else:
-                raw_paras = re.split(r"\n{2,}", part)
-                paragraphs = [
-                    re.sub(r"^[#*\s]+", "", p).replace("\n", " ").strip()
-                    for p in raw_paras if p.strip()
-                ]
-                # Deduplicate: skip paragraphs identical to one already rendered.
-                unique_paragraphs = []
-                for para_text in paragraphs:
-                    key = para_text.lower()
-                    if key not in seen:
-                        seen.add(key)
-                        unique_paragraphs.append(para_text)
-                paragraphs = unique_paragraphs
-                for para_text in paragraphs:
-                    if is_first_para:
-                        try:
-                            doc.add_paragraph(para_text, style=self.styles.first_paragraph)
-                        except KeyError:
-                            doc.add_paragraph(para_text)
+                for para_text in self._split_paragraphs(part):
+                    key = re.sub(r"\s+", " ", para_text.lower())
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    # Section headings (stripped of ##) rendered as bold body text
+                    is_heading = bool(re.match(r"^#{1,6}\s", para_text))
+                    clean = re.sub(r"^#{1,6}\s+", "", para_text)
+
+                    if is_heading:
+                        _plain_para(doc, clean, font_size=11, bold=True)
+                    elif is_first_para:
+                        _markdown_para(doc, clean, font_size=11)
                         is_first_para = False
                     else:
-                        try:
-                            doc.add_paragraph(para_text, style=self.styles.body_text)
-                        except KeyError:
-                            doc.add_paragraph(para_text)
+                        _markdown_para(doc, clean, font_size=11)
+
+    @staticmethod
+    def _split_paragraphs(text: str) -> list[str]:
+        """Split on blank lines; join soft-wrapped single newlines into one paragraph."""
+        blocks = re.split(r"\n{2,}", text)
+        return [b.replace("\n", " ").strip() for b in blocks if b.strip()]
 
     def _embed_image(self, doc: Document, img: GeneratedImage) -> None:
         buf = io.BytesIO(img.image_bytes)
@@ -222,16 +226,10 @@ class DocxBuilder:
         caption_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         caption_run = caption_para.add_run(img.marker.description)
         caption_run.italic = True
-        _set_run_font(caption_run, "Garamond", 9)
+        caption_run.font.name = "Garamond"
+        caption_run.font.size = Pt(9)
 
     def _add_about_author(self, doc: Document, bio: str) -> None:
-        try:
-            doc.add_paragraph("ABOUT THE AUTHOR", style=self.styles.chapter_title)
-        except KeyError:
-            doc.add_paragraph("ABOUT THE AUTHOR")
-
+        _plain_para(doc, "ABOUT THE AUTHOR", font_size=14, bold=True)
         doc.add_paragraph()
-        try:
-            doc.add_paragraph(bio, style=self.styles.front_matter_body)
-        except KeyError:
-            doc.add_paragraph(bio)
+        _plain_para(doc, bio, font_size=11)
